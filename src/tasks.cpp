@@ -10,6 +10,9 @@
 #include "libDM_SRX_10_DOF_interface.hpp"
 #include "libDM_SRX_FFT64_interface.hpp"
 
+#include <SparkFun_u-blox_GNSS_v3.h>
+SFE_UBLOX_GNSS myGNSS;
+
 // ====================================================== //
 // ======================= Objects ====================== //
 // ====================================================== //
@@ -215,11 +218,36 @@ void taskMain(void* pvParameters) // NOLINT(misc-unused-parameters)
         ins.setInputs(insInputs);
         ins.step();        
 
+
+        // read GPS UBLOX SAM M10Q
+        int32_t latitude = myGNSS.getLatitude();
+        int32_t longitude = myGNSS.getLongitude(); 
+        int32_t altitude = myGNSS.getAltitudeMSL(); // Altitude above Mean Sea Level    
+
         // ~~~~~~~~~~~~~ Serial send ~~~~~~~~~~~~~ //
         Serial.print(ins.getOutputs().yawPitchRollGlobal[0]*180/PI);Serial.print("\t");
         Serial.print(ins.getOutputs().yawPitchRollGlobal[1]*180/PI);Serial.print("\t");
         Serial.print(ins.getOutputs().yawPitchRollGlobal[2]*180/PI);Serial.print("\t");
         Serial.println();
+
+         //output time
+        Serial.print(myGNSS.getYear());Serial.print("/");
+        Serial.print(myGNSS.getMonth());Serial.print("/");
+        Serial.print(myGNSS.getDay());Serial.print(" - ");
+        Serial.print(myGNSS.getHour());Serial.print(":");
+        Serial.print(myGNSS.getMinute());Serial.print(":");
+        Serial.print(myGNSS.getSecond());Serial.print(".");
+        Serial.print(myGNSS.getMillisecond());;Serial.print("\t");
+
+        // Output GPS Data          
+        Serial.print(F("Lat: "));    Serial.print(latitude);
+        Serial.print(F(" Long: "));    Serial.print(longitude);    Serial.print(F(" (degrees * 10^-7)"));
+        Serial.print(F(" Alt: "));    Serial.print(altitude);    Serial.print(F(" (mm)"));
+        Serial.println();
+
+        
+
+
         delay(10);
         // ~~~~~~~~~~~~~~~~~ SD ~~~~~~~~~~~~~~~~~ //
         streamObj.updateLogBuffer(); // The fastest and most prioritary task updates buffers
@@ -486,6 +514,10 @@ void protocolInit()
     // SPI init
     SPI.begin(pinConf.pinClk, pinConf.pinMiso, pinConf.pinMosi, pinConf.pinSS);
     delay(1);
+    
+    // I2C init (GPS and RTC)
+    Wire.begin();
+    delay(1);
 }
 
 void rtosSetup()
@@ -661,4 +693,15 @@ void startLogger()
     streamObj.begin(); // Has to be begun after SPI init
 }
 
-
+void initializeGPS(){
+  
+  Serial.println(F("Initilising the GPS using I2C bus"));
+    while (myGNSS.begin() == false) //Connect to the u-blox module using Wire port
+  {
+    Serial.println(F("u-blox GNSS not detected at default I2C address. Retrying..."));
+    delay (1000);
+  }
+  myGNSS.setI2COutput(COM_TYPE_UBX); // Set the I2C port to output UBX only (turn off NMEA noise)
+  myGNSS.setNavigationFrequency(2); // Produce two solutions per second
+  myGNSS.setAutoPVT(true); // Tell the GNSS to output each solution periodically
+}

@@ -56,7 +56,12 @@ struct PIN_CONFIG
     uint8_t pinSdioDat3 = 41U;
     uint8_t pinSdioCmd  = 40U;
 
-    uint8_t pinGpsRx = 8;
+    uint8_t pinSdk = 9U;
+    uint8_t pinSda = 8U;
+
+
+
+    uint8_t pinGpsRx = 35;//8;
     uint8_t pinGpsTx = 18;
 
     uint8_t pinVn200Rx = 17;

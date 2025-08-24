@@ -212,4 +212,9 @@ void initializeUtilityLogger();
  */
 void startLogger();
 
+/**
+ * @brief Starts UBLOX SAM M10Q
+ */
+void initializeGPS();
+
 #endif
