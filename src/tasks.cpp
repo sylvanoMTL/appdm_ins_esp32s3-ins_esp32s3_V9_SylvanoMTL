@@ -214,22 +214,36 @@ void taskMain(void* pvParameters) // NOLINT(misc-unused-parameters)
                 insInputs.barometerTimestampUs  = resBARO.usPressureTimestamp;
             }
         }
-
-        ins.setInputs(insInputs);
-        ins.step();        
+ 
 
 
         // read GPS UBLOX SAM M10Q
         int32_t latitude = myGNSS.getLatitude();
-        int32_t longitude = myGNSS.getLongitude(); 
+        int32_t longitude = myGNSS.getLatitude();
         int32_t altitude = myGNSS.getAltitudeMSL(); // Altitude above Mean Sea Level    
+
+        insInputs.gpsTimestampUs  = 1; // Any value
+        insInputs.degGpsLatitude  = myGNSS.getLatitude();
+        insInputs.degGpsLongitude = myGNSS.getLatitude();
+        insInputs.gpsYear  = myGNSS.getYear();
+        insInputs.gpsMonth = myGNSS.getMonth();
+        insInputs.gpsDay = myGNSS.getDay();
+        insInputs.gpsHour = myGNSS.getMinute();
+        insInputs.gpsMinutes = myGNSS.getMinute();
+        insInputs.gpsSeconds = myGNSS.getSecond();
+
+
+        // set the Inputs for the ins model
+        ins.setInputs(insInputs);
+        ins.step();       
+
+
 
         // ~~~~~~~~~~~~~ Serial send ~~~~~~~~~~~~~ //
         Serial.print(ins.getOutputs().yawPitchRollGlobal[0]*180/PI);Serial.print("\t");
         Serial.print(ins.getOutputs().yawPitchRollGlobal[1]*180/PI);Serial.print("\t");
         Serial.print(ins.getOutputs().yawPitchRollGlobal[2]*180/PI);Serial.print("\t");
         Serial.println();
-
          //output time
         Serial.print(myGNSS.getYear());Serial.print("/");
         Serial.print(myGNSS.getMonth());Serial.print("/");
