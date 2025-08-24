@@ -1,0 +1,172 @@
+image:
+  name: python:3.10.5
+  pull_policy: if-not-present
+variables:
+  PIP_CACHE_DIR: $CI_PROJECT_DIR/.cache/pip
+cache:
+  key: $CI_COMMIT_REF_SLUG
+  paths:
+    - .cache/pip
+    - ~/.platformio
+stages:
+  - full_build_ins_esp32s3
+  - code_check
+  - doc
+  - release
+before_script:
+  - pip install -U platformio
+  - pio --version
+  - mkdir -p ~/.bin
+  - PATH="${HOME}/.bin:${PATH}"
+  - curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+  - chmod a+rx ~/.bin/repo
+  - chmod +x build.sh
+clang_format:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - apt-get update
+    - apt-get install -y software-properties-common
+    - add-apt-repository 'deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-17
+      main'
+    - wget https://apt.llvm.org/llvm-snapshot.gpg.key
+    - apt-key add llvm-snapshot.gpg.key
+    - apt-get update
+    - apt-get install -y clang-format-17
+    - ln -s /usr/bin/clang-format-17 /usr/bin/clang-format
+  stage: code_check
+  needs: []
+  tags:
+    - main
+  allow_failure: true
+  script:
+    - ./format.sh --check --recursive .
+coverity:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  stage: code_check
+  needs: []
+  tags:
+    - main
+  allow_failure: true
+  script: ./coverity.sh
+full_build_ins_esp32s3_repo:
+  stage: full_build_ins_esp32s3
+  variables:
+    LOGURU_COLORIZE: 'true'
+    STAY_ON_MAIN: 'true'
+  tags:
+    - main
+  script: ./build.sh ci
+full_build_ins_esp32s3_downstream_branch:
+  stage: full_build_ins_esp32s3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: ($UPSTREAM_COMMIT_REF_NAME == "main" || $UPSTREAM_BRANCH == "main")
+      when: never
+    - if: ($UPSTREAM_COMMIT_REF_NAME && $UPSTREAM_BRANCH)
+  variables:
+    LOGURU_COLORIZE: 'true'
+  tags:
+    - main
+  script:
+    - echo "Hello, commit has been pushed on a working branch of a lib, UPSTREAM_COMMIT_REF_NAME
+      = $UPSTREAM_COMMIT_REF_NAME, UPSTREAM_BRANCH = $UPSTREAM_BRANCH, CI_PIPELINE_SOURCE=$CI_PIPELINE_SOURCE"
+    - echo "Hello upstream project name = $UPSTREAM_PROJECT_NAME"
+    - ./build.sh ci
+full_build_ins_esp32s3_downstream_main:
+  stage: full_build_ins_esp32s3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $UPSTREAM_COMMIT_REF_NAME == "main"
+    - if: $UPSTREAM_BRANCH == "main"
+  variables:
+    LOGURU_COLORIZE: 'true'
+  tags:
+    - main
+  script:
+    - echo "Hello, commit has been pushed on a master branch of a lib, or merge request,
+      UPSTREAM_COMMIT_REF_NAME = $UPSTREAM_COMMIT_REF_NAME, UPSTREAM_BRANCH = $UPSTREAM_BRANCH"
+    - echo "Hello upstream project name = $UPSTREAM_PROJECT_NAME"
+    - ./build.sh ci
+gen_doc:
+  stage: doc
+  needs: []
+  script:
+    - ./generate_doc.sh true ci
+  tags:
+    - main
+  artifacts:
+    paths:
+      - doc/
+    expire_in: 2 days
+    expose_as: artifacts gen_doc
+pages:
+  stage: doc
+  needs:
+    - job: gen_doc
+  script:
+    - mkdir .public
+    - cp -r doc/doc_repo/_build/html/* .public
+    - cp -r doc/doc_repo/doxyfiles/html .public/_static/doxyfiles
+    - rm -rf public
+    - mv .public public
+  tags:
+    - main
+  artifacts:
+    paths:
+      - public
+    expire_in: 2 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+release:package_code:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - ls -all
+    - cd tools
+    - pip install -r requirements.txt
+    - python3 generate_release.py
+    - cd ..
+    - mkdir artifacts
+    - mv tools/artifacts.zip artifacts/release_$CI_COMMIT_TAG.zip
+    - mv tools/doc.zip artifacts/doc_release_$CI_COMMIT_TAG.zip
+    - echo "JOB_ID=$CI_JOB_ID" > artifacts/job.env
+    - du -sh artifacts
+    - ls -l artifacts
+  after_script:
+    - cat artifacts/job.env
+  artifacts:
+    paths:
+      - artifacts
+    reports:
+      dotenv: artifacts/job.env
+    expire_in: never
+release:create_release:
+  stage: release
+  needs:
+    - release:package_code
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - curl --location --output /usr/local/bin/release-cli "https://gitlab.com/api/v4/projects/gitlab-org%2Frelease-cli/packages/generic/release-cli/latest/release-cli-linux-amd64"
+    - chmod +x /usr/local/bin/release-cli
+    - release-cli -v
+    - echo "Running the release job."
+    - JOB_ID=$(cat artifacts/job.env)
+    - echo JOB_ID
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: Release created using the release-cli. Release '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: code_and_doc_release_$CI_COMMIT_TAG.zip
+          url: $CI_SERVER_URL/$CI_PROJECT_PATH/-/jobs/$JOB_ID/artifacts/download

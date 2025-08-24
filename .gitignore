@@ -1,0 +1,8 @@
+.pio
+.repo
+.vscode
+.DS_Store
+doc/libDM_doc_template/
+doc/doc_repo/_build/
+doc/doc_repo/_static/doxyfiles/
+doc/doc_repo/doxyfiles/
